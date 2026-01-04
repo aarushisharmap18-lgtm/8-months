@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Round 1 – Assassin Mission</title>
+
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+      font-family: Arial, sans-serif;
+      color: white;
+    }
+
+    canvas {
+      display: none;
+    }
+
+    button {
+      padding: 12px 30px;
+      font-size: 16px;
+      background: #111;
+      color: white;
+      border: 1px solid #555;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1a1a1a;
+    }
+
+    /* ---------- SCREENS ---------- */
+    .screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-size: cover;
+      background-position: center;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+    }
+
+    .content {
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 20px;
+    }
+
+    /* ---------- INTRO ---------- */
+    #intro {
+      background-image: url("intro-bg.jpg");
+    }
+
+    #intro img {
+      width: 440px;
+      filter: brightness(1.6) contrast(1.35);
+      box-shadow:
+        0 0 25px rgba(255,255,255,0.4),
+        0 0 45px rgba(255,255,255,0.25);
+    }
+
+    /* ---------- MISSION COMPLETE ---------- */
+    #complete {
+      display: none;
+      background: rgba(0,0,0,0.85);
+    }
+
+    #reward {
+      width: 220px;
+      margin: 10px 0;
+      animation: fadeIn 1.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ================= INTRO ================= -->
+<div id="intro" class="screen">
+  <div class="overlay"></div>
+  <div class="content">
+    <img src="intro-text.png" alt="Intro Text">
+    <button onclick="startGame()">Start</button>
+  </div>
+</div>
+
+<!-- ================= GAME ================= -->
+<canvas id="game"></canvas>
+
+<!-- ================= MISSION COMPLETE + REWARD ================= -->
+<div id="complete" class="screen">
+  <div class="content">
+    <h1>MISSION COMPLETE</h1>
+
+    <!-- ACTUAL REWARD -->
+    <img src="reward.jpg" id="reward" alt="Reward">
+
+    <button onclick="goToRound2()">Continue</button>
+  </div>
+</div>
+
+<script>
+/* ================= CANVAS ================= */
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+/* ================= INPUT ================= */
+let keys = {};
+document.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+});
+document.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+/* ================= IMAGES ================= */
+const bgImg = new Image();
+bgImg.src = "background.jpg";
+
+const playerImg = new Image();
+playerImg.src = "player.png";
+
+const enemyImg = new Image();
+enemyImg.src = "enemy.png";
+
+/* ================= PLAYER ================= */
+const player = {
+  x: 80,
+  y: 200,
+  size: 40,
+  speed: 3
+};
+
+/* ================= ENEMIES (8) ================= */
+let enemies = [];
+for (let i = 0; i < 8; i++) {
+  enemies.push({
+    x: 250 + i * 120,
+    y: 150 + (i % 4) * 120,
+    dir: i % 2 === 0 ? 1 : -1
+  });
+}
+
+/* ================= KILL EFFECT ================= */
+let killEffects = [];
+let killCooldown = false;
+
+/* ================= GAME STATE ================= */
+let gameRunning = false;
+
+/* ================= START GAME ================= */
+function startGame() {
+  document.getElementById("intro").style.display = "none";
+  canvas.style.display = "block";
+  gameRunning = true;
+  gameLoop();
+}
+
+/* ================= MOVEMENT ================= */
+function movePlayer() {
+  if (keys["w"] || keys["arrowup"]) player.y -= player.speed;
+  if (keys["s"] || keys["arrowdown"]) player.y += player.speed;
+  if (keys["a"] || keys["arrowleft"]) player.x -= player.speed;
+  if (keys["d"] || keys["arrowright"]) player.x += player.speed;
+
+  player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
+  player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+}
+
+function moveEnemies() {
+  enemies.forEach(e => {
+    e.x += e.dir * 1.5;
+    if (e.x < 200 || e.x > canvas.width - 100) e.dir *= -1;
+  });
+}
+
+/* ================= KILL ================= */
+function attemptKill() {
+  if (killCooldown) return;
+
+  enemies.forEach((e, i) => {
+    const dx = (player.x + player.size / 2) - e.x;
+    const dy = (player.y + player.size / 2) - e.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 35) {
+      killEffects.push({
+        x: e.x,
+        y: e.y,
+        radius: 6,
+        alpha: 1
+      });
+
+      enemies.splice(i, 1);
+      killCooldown = true;
+      setTimeout(() => killCooldown = false, 200);
+    }
+  });
+}
+
+/* ================= DRAW ================= */
+function draw() {
+  ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+
+  enemies.forEach(e => {
+    ctx.drawImage(enemyImg, e.x - 20, e.y - 20, 40, 40);
+  });
+
+  ctx.drawImage(playerImg, player.x, player.y, player.size, player.size);
+
+  killEffects.forEach((k, i) => {
+    ctx.strokeStyle = `rgba(255,0,0,${k.alpha})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(k.x, k.y, k.radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    k.radius += 4;
+    k.alpha -= 0.05;
+    if (k.alpha <= 0) killEffects.splice(i, 1);
+  });
+}
+
+/* ================= LOOP ================= */
+function gameLoop() {
+  if (!gameRunning) return;
+
+  if (enemies.length === 0) {
+    gameRunning = false;
+    document.getElementById("complete").style.display = "flex";
+    return;
+  }
+
+  movePlayer();
+  moveEnemies();
+  if (keys[" "]) attemptKill();
+
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+/* ================= ROUND 2 ================= */
+function goToRound2() {
+  window.location.href = "../Round2_Question/index.html";
+}
+</script>
+
+</body>
+</html>
